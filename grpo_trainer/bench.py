@@ -31,7 +31,7 @@ class MainArgs:
     freeze_vision: bool = False
     n_gpus_per_node: int = 8
     offload: bool = False
-    turn: int = 1
+    turn: int = 2
     verl_version: Optional[str] = None
     experiment: Optional[str] = None
 
@@ -158,7 +158,7 @@ def main(cfg: DictConfig):
     config_name = "ppo_megatron_trainer" if cfg.trainer == "megatron" else "ppo_trainer"
     config_path = "verl.trainer.config"
     with initialize_config_module(config_module=config_path, version_base=None):
-        with open(f"{cfg.experiment}.log", "w") as f:
+        with open(f"bench/{cfg.experiment}.log", "w") as f:
             for arg in verl_args:
                 f.write(arg + "\n")
         cfg = compose(config_name=config_name, overrides=verl_args)
