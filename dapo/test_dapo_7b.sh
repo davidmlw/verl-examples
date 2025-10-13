@@ -34,7 +34,7 @@ RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
 WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-4}
-TURN=${TURN:-1}
+TURN=${TURN:-2}
 verl_version=$(git rev-parse --short=4 HEAD)
 experiment_name="dapo-7b-fsdp-vllm-n${NNODES}-${verl_version}-${TURN}"
 # Paths

@@ -71,7 +71,7 @@ def main(cfg: DictConfig):
         "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=20",
         f"actor_rollout_ref.rollout.tensor_model_parallel_size={cfg.rollout_parallel.tp}",
         f"actor_rollout_ref.rollout.name={cfg.rollout}",
-        "actor_rollout_ref.rollout.gpu_memory_utilization=0.5",
+        "actor_rollout_ref.rollout.gpu_memory_utilization=0.8",
         "actor_rollout_ref.rollout.enable_chunked_prefill=False",
         "actor_rollout_ref.rollout.enforce_eager=False",
         "actor_rollout_ref.rollout.free_cache_engine=True",
