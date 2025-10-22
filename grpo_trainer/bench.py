@@ -1,7 +1,7 @@
 
 import sys
 import hydra
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hydra import compose, initialize, initialize_config_module
 from hydra.core.config_store import ConfigStore
 from hydra.core.global_hydra import GlobalHydra
@@ -24,14 +24,17 @@ class MainArgs:
     msize: str = "7b"
     trainer: str = "fsdp"
     rollout: str = "vllm"
+    gpu_memory_utilization: float = 0.5
     nnodes: int = 4
-    trainer_parallel: ParallelArgs = ParallelArgs(2, 4)
-    rollout_parallel: ParallelArgs = ParallelArgs(None, 4)
+    trainer_parallel: ParallelArgs = field(default_factory=lambda: ParallelArgs(2, 4))
+    rollout_parallel: ParallelArgs = field(default_factory=lambda: ParallelArgs(None, 4))
+    rollout_mode: str = "sync"
     dynamic_bsz: bool = False
     freeze_vision: bool = False
     n_gpus_per_node: int = 8
     offload: bool = False
-    turn: int = 2
+    nsys: bool = False
+    turn: int = 4
     verl_version: Optional[str] = None
     experiment: Optional[str] = None
 
@@ -49,7 +52,7 @@ def main(cfg: DictConfig):
     offload_flag = "-ol" if cfg.offload else ""
     rollout_tp_flag = f"-rtp{cfg.rollout_parallel.tp}" if cfg.rollout_parallel.tp is not None else ""
     version_flag = f"-{get_verl_version()}" if cfg.verl_version is None else cfg.verl_version
-    cfg.experiment = f"{cfg.msize}-{cfg.trainer}-{cfg.rollout}-n{cfg.nnodes}{pptp_flag}{rollout_tp_flag}{db_flag}{fv_flag}{offload_flag}{version_flag}-{cfg.turn}"
+    cfg.experiment = f"{cfg.msize}-{cfg.trainer}-{cfg.rollout}-{cfg.rollout_mode}-n{cfg.nnodes}{pptp_flag}{rollout_tp_flag}{db_flag}{fv_flag}{offload_flag}{version_flag}-{cfg.turn}"
 
     verl_args = [
         "algorithm.adv_estimator=grpo",
@@ -71,7 +74,7 @@ def main(cfg: DictConfig):
         "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=20",
         f"actor_rollout_ref.rollout.tensor_model_parallel_size={cfg.rollout_parallel.tp}",
         f"actor_rollout_ref.rollout.name={cfg.rollout}",
-        "actor_rollout_ref.rollout.gpu_memory_utilization=0.8",
+        f"actor_rollout_ref.rollout.gpu_memory_utilization={cfg.gpu_memory_utilization}",
         "actor_rollout_ref.rollout.enable_chunked_prefill=False",
         "actor_rollout_ref.rollout.enforce_eager=False",
         "actor_rollout_ref.rollout.free_cache_engine=True",
@@ -84,8 +87,8 @@ def main(cfg: DictConfig):
         f"trainer.experiment_name={cfg.experiment}",
         f"trainer.n_gpus_per_node={cfg.n_gpus_per_node}",
         f"trainer.nnodes={cfg.nnodes}",
-        "trainer.save_freq=20",
-        "trainer.test_freq=5",
+        "trainer.save_freq=-1",
+        "trainer.test_freq=-1",
         "trainer.total_epochs=15",
     ]
 
@@ -123,10 +126,12 @@ def main(cfg: DictConfig):
     if cfg.dynamic_bsz:
         verl_args.extend([
             "actor_rollout_ref.actor.use_dynamic_bsz=True",
+            "actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True",
+            "actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True",
             "actor_rollout_ref.rollout.free_cache_engine=False"])
         if cfg.trainer == "fsdp":
             verl_args.extend([
-                "actor_rollout_ref.actor.ppo_max_token_len_per_gpu=6144"])
+                "actor_rollout_ref.actor.ppo_max_token_len_per_gpu=8192"])
         elif cfg.trainer == "megatron":
             verl_args.extend([
                 "actor_rollout_ref.actor.ppo_max_token_len_per_gpu=5120"])
@@ -153,6 +158,26 @@ def main(cfg: DictConfig):
         verl_args.extend(["actor_rollout_ref.model.use_fused_kernels=False"])
     else:
         verl_args.extend(["actor_rollout_ref.model.use_fused_kernels=True"])
+
+    if cfg.rollout_mode == "sync":
+        verl_args.extend(["actor_rollout_ref.rollout.mode=sync"])
+    elif cfg.rollout_mode == "async":
+        verl_args.extend([
+            "actor_rollout_ref.rollout.mode=async",
+            "trainer.test_freq=-1",
+            "trainer.val_before_train=False"])
+
+    if cfg.nsys:
+        verl_args.extend(["global_profiler.profile_continuous_steps=True",
+                          "global_profiler.tool=nsys",
+                          "global_profiler.steps=[1,2,5]",
+                          "global_profiler.global_tool_config.nsys.discrete=False",
+                          "actor_rollout_ref.actor.profiler.enable=True",
+                          "actor_rollout_ref.actor.profiler.all_ranks=True",
+                          "trainer.val_before_train=False",
+                          "trainer.test_freq=-1",
+                          "trainer.save_freq=-1",
+                          "trainer.total_training_steps=6"])
 
     GlobalHydra.instance().clear()
     config_name = "ppo_megatron_trainer" if cfg.trainer == "megatron" else "ppo_trainer"

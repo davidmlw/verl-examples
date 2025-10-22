@@ -64,7 +64,7 @@ else
     )
 fi
 
-if [ $DYNAMIC_BSZ == "True" ] or [ $FREEZE_VISION == "True" ]; then
+if [ $DYNAMIC_BSZ == "True" ]; then
     verl_args=(
         ${verl_args[@]}
         actor_rollout_ref.model.use_fused_kernels=False ## default from hf_model.yaml
